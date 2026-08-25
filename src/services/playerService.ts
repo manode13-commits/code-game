@@ -85,8 +85,20 @@ function setLocalCache<T>(key: string, data: T[]): void {
   }
 }
 
+// Helper to sanitize objects for Firestore (removes undefined values completely)
+function sanitizeForFirestore<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const result: Record<string, any> = {};
+  Object.keys(obj).forEach((key) => {
+    const val = obj[key];
+    if (val !== undefined) {
+      result[key] = val;
+    }
+  });
+  return result;
+}
+
 export function getPlayerDocId(name: string): string {
-  const clean = (name || '').trim().replace(/[\/\.\s]+/g, '_').toLowerCase();
+  const clean = (name || '').trim().replace(/[\/\.\s#$\[\]]+/g, '_').toLowerCase();
   return `p_${clean || 'guest'}`;
 }
 
@@ -112,9 +124,9 @@ export async function savePlayerRecord(player: Partial<PlayerRecord> & { name: s
     maxCombo: Number(player.maxCombo ?? 0),
     createdAt: player.createdAt || now,
     lastActiveAt: now,
-    completedAt: player.completedAt,
-    certificateIssued: player.certificateIssued,
-    certificateId: player.certificateId,
+    completedAt: player.completedAt || undefined,
+    certificateIssued: typeof player.certificateIssued === 'boolean' ? player.certificateIssued : undefined,
+    certificateId: player.certificateId || undefined,
   };
 
   // 1. Update Local Storage Cache immediately
@@ -127,12 +139,27 @@ export async function savePlayerRecord(player: Partial<PlayerRecord> & { name: s
   }
   setLocalCache(LOCAL_PLAYERS_KEY, localList);
 
-  // 2. Persist to Firebase Firestore
+  // 2. Persist to Firebase Firestore without any undefined fields
   if (db) {
     try {
       const playerDocRef = doc(collection(db, 'players'), playerId);
-      await setDoc(playerDocRef, record, { merge: true });
-      console.log('✅ บันทึกผู้เล่นลง Firestore สำเร็จ:', name, `(ID: ${playerId})`);
+      const firestoreData = sanitizeForFirestore({
+        id: playerId,
+        name: name,
+        deviceMode: record.deviceMode,
+        unlockedLevelIndex: record.unlockedLevelIndex,
+        completedLevels: record.completedLevels,
+        totalScore: record.totalScore,
+        maxCombo: record.maxCombo,
+        createdAt: record.createdAt,
+        lastActiveAt: record.lastActiveAt,
+        ...(record.completedAt ? { completedAt: record.completedAt } : {}),
+        ...(typeof record.certificateIssued === 'boolean' ? { certificateIssued: record.certificateIssued } : {}),
+        ...(record.certificateId ? { certificateId: record.certificateId } : {}),
+      });
+
+      await setDoc(playerDocRef, firestoreData, { merge: true });
+      console.log('✅ บันทึกผู้เล่นลง Firestore สำเร็จ:', name, `(Doc ID: ${playerId})`, firestoreData);
     } catch (err) {
       console.error('❌ ไม่สามารถบันทึกผู้เล่นลง Firestore ได้:', err);
     }
@@ -185,9 +212,11 @@ export async function saveCertificateRecord(cert: Partial<CertificateRecord> & {
   if (db) {
     try {
       const certDocRef = doc(collection(db, 'certificates'), certId);
-      await setDoc(certDocRef, fullCert, { merge: true });
+      const firestoreCert = sanitizeForFirestore(fullCert);
+      await setDoc(certDocRef, firestoreCert, { merge: true });
+      console.log('✅ บันทึกใบเกียรติบัตรลง Firestore สำเร็จ:', cert.studentName, `(ID: ${certId})`);
     } catch (err) {
-      console.warn('Could not sync certificate to Firestore (cached locally):', err);
+      console.error('❌ ไม่สามารถบันทึกใบเกียรติบัตรลง Firestore ได้:', err);
     }
   }
 
