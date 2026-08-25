@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Players collection for game leaderboards, progress and student certificates
+    match /players/{playerId} {
+      allow read, write: if true;
+    }
+    
+    // Certificates collection for public verification and retroactive downloads
+    match /certificates/{certId} {
+      allow read, write: if true;
+    }
+  }
+}

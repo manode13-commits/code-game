@@ -1,0 +1,6 @@
+{
+  "name": "Science Week Code Quest (เกมถอดรหัสวิทย์)",
+  "description": "เกมแก้ปัญหาและฝึกคิดเชิงคำนวณ (Computational Thinking) สำหรับสัปดาห์วิทยาศาสตร์ เลื่อนจุดตามคำสั่งโค้ด ลำดับ วนซ้ำ เงื่อนไข และฟังก์ชัน แข่งขันรอบละ 10 คน 5 นาที ชิงรางวัล",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,49 @@
+{
+  "entities": {
+    "players": {
+      "title": "Players",
+      "description": "Registered students participating in the coding quest",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "deviceMode": { "type": "string", "enum": ["desktop", "mobile"] },
+        "unlockedLevelIndex": { "type": "number" },
+        "completedLevels": { "type": "number" },
+        "totalScore": { "type": "number" },
+        "maxCombo": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastActiveAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "certificateIssued": { "type": "boolean" },
+        "certificateId": { "type": "string" }
+      },
+      "required": ["name", "totalScore"]
+    },
+    "certificates": {
+      "title": "Certificates",
+      "description": "Issued Science Week Certificates for students completing all levels",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentName": { "type": "string" },
+        "totalScore": { "type": "number" },
+        "maxCombo": { "type": "number" },
+        "completedLevels": { "type": "number" },
+        "issuedAt": { "type": "string", "format": "date-time" },
+        "formattedThaiDate": { "type": "string" }
+      },
+      "required": ["id", "studentName", "totalScore", "issuedAt"]
+    }
+  },
+  "rules": {
+    "players": {
+      "read": "true",
+      "write": "true"
+    },
+    "certificates": {
+      "read": "true",
+      "write": "true"
+    }
+  }
+}
