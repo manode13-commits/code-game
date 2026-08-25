@@ -1,4 +1,4 @@
-import { db } from './firebase';
+import { db, testFirebaseConnection } from './firebase';
 import {
   collection,
   doc,
@@ -9,7 +9,9 @@ import {
   query,
   orderBy,
   limit,
+  onSnapshot,
 } from 'firebase/firestore';
+
 
 export interface PlayerRecord {
   id: string;
@@ -83,16 +85,26 @@ function setLocalCache<T>(key: string, data: T[]): void {
   }
 }
 
+export function getPlayerDocId(name: string): string {
+  const clean = (name || '').trim().replace(/[\/\.\s]+/g, '_').toLowerCase();
+  return `p_${clean || 'guest'}`;
+}
+
 /**
  * Save / Update Player in Firebase Firestore & Local Storage
  */
 export async function savePlayerRecord(player: Partial<PlayerRecord> & { name: string }): Promise<PlayerRecord> {
-  const playerId = player.id || `player_${player.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}`;
+  const name = (player.name || '').trim();
+  if (!name) {
+    throw new Error('Player name is required');
+  }
+
+  const playerId = player.id || getPlayerDocId(name);
   const now = new Date().toISOString();
 
   const record: PlayerRecord = {
     id: playerId,
-    name: player.name,
+    name: name,
     deviceMode: player.deviceMode || 'desktop',
     unlockedLevelIndex: Number(player.unlockedLevelIndex ?? player.completedLevels ?? 0),
     completedLevels: Number(player.completedLevels ?? 0),
@@ -107,7 +119,7 @@ export async function savePlayerRecord(player: Partial<PlayerRecord> & { name: s
 
   // 1. Update Local Storage Cache immediately
   const localList = getLocalCache<PlayerRecord>(LOCAL_PLAYERS_KEY);
-  const existingIdx = localList.findIndex(p => p.id === playerId || p.name === player.name);
+  const existingIdx = localList.findIndex(p => p.id === playerId || p.name.trim().toLowerCase() === name.toLowerCase());
   if (existingIdx >= 0) {
     localList[existingIdx] = { ...localList[existingIdx], ...record };
   } else {
@@ -115,14 +127,17 @@ export async function savePlayerRecord(player: Partial<PlayerRecord> & { name: s
   }
   setLocalCache(LOCAL_PLAYERS_KEY, localList);
 
-  // 2. Persist to Firebase Firestore if online/available
+  // 2. Persist to Firebase Firestore
   if (db) {
     try {
       const playerDocRef = doc(collection(db, 'players'), playerId);
       await setDoc(playerDocRef, record, { merge: true });
+      console.log('✅ บันทึกผู้เล่นลง Firestore สำเร็จ:', name, `(ID: ${playerId})`);
     } catch (err) {
-      console.warn('Could not sync player to Firestore (cached locally):', err);
+      console.error('❌ ไม่สามารถบันทึกผู้เล่นลง Firestore ได้:', err);
     }
+  } else {
+    console.warn('⚠️ Firestore db is not initialized, saved to local cache');
   }
 
   return record;
@@ -260,16 +275,22 @@ export async function fetchAllPlayers(): Promise<PlayerRecord[]> {
 
   if (db) {
     try {
-      const q = query(collection(db, 'players'), orderBy('totalScore', 'desc'), limit(300));
+      // Query without strict single-field ordering to ensure newly created players (with 0 score) are included
+      const q = query(collection(db, 'players'), limit(300));
       const snap = await getDocs(q);
       const remoteList: PlayerRecord[] = [];
       snap.forEach(docSnap => {
-        remoteList.push(docSnap.data() as PlayerRecord);
+        const data = docSnap.data() as PlayerRecord;
+        if (data && (data.name || data.id)) {
+          remoteList.push(data);
+        }
       });
 
       if (remoteList.length > 0) {
         const mergedMap = new Map<string, PlayerRecord>();
-        [...remoteList, ...localList].forEach(p => mergedMap.set(p.id, p));
+        // Remote data takes priority, merged with local cache
+        localList.forEach(p => mergedMap.set(p.name?.trim().toLowerCase() || p.id, p));
+        remoteList.forEach(p => mergedMap.set(p.name?.trim().toLowerCase() || p.id, p));
         mergedList = Array.from(mergedMap.values());
       }
     } catch (err) {
@@ -303,16 +324,39 @@ export async function fetchAllPlayers(): Promise<PlayerRecord[]> {
     setLocalCache(LOCAL_PLAYERS_KEY, activeList);
   }
 
-  return activeList.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+  return activeList.sort((a, b) => {
+    const scoreDiff = (b.totalScore || 0) - (a.totalScore || 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    const timeB = new Date(b.lastActiveAt || b.createdAt || 0).getTime();
+    const timeA = new Date(a.lastActiveAt || a.createdAt || 0).getTime();
+    return timeB - timeA;
+  });
 }
 
 /**
  * Fetch a specific player record to resume their saved progress
  */
 export async function fetchPlayerByName(name: string): Promise<PlayerRecord | null> {
-  if (!name.trim()) return null;
+  const cleanName = (name || '').trim();
+  if (!cleanName) return null;
+
+  // 1. Try direct Firestore getDoc by ID for fast lookup
+  if (db) {
+    try {
+      const docId = getPlayerDocId(cleanName);
+      const docRef = doc(collection(db, 'players'), docId);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        return snap.data() as PlayerRecord;
+      }
+    } catch (err) {
+      console.warn('Firestore direct player lookup note:', err);
+    }
+  }
+
+  // 2. Fallback to scanning all players
   const all = await fetchAllPlayers();
-  const found = all.find(p => p.name.trim().toLowerCase() === name.trim().toLowerCase());
+  const found = all.find(p => (p.name || '').trim().toLowerCase() === cleanName.toLowerCase());
   return found || null;
 }
 
@@ -431,4 +475,67 @@ export async function fetchPlayerHistoryEntries(): Promise<PlayerHistoryEntry[]>
     return b.totalScore - a.totalScore;
   });
 }
+
+export { testFirebaseConnection };
+
+/**
+ * Subscribe to real-time player updates from Firestore
+ */
+export function subscribeToPlayers(callback: (players: PlayerRecord[]) => void): () => void {
+  if (!db) {
+    callback(getLocalCache<PlayerRecord>(LOCAL_PLAYERS_KEY));
+    return () => {};
+  }
+  try {
+    const q = query(collection(db, 'players'), orderBy('totalScore', 'desc'), limit(300));
+    return onSnapshot(q, (snap) => {
+      const remoteList: PlayerRecord[] = [];
+      snap.forEach((d) => remoteList.push(d.data() as PlayerRecord));
+      if (remoteList.length > 0) {
+        setLocalCache(LOCAL_PLAYERS_KEY, remoteList);
+        callback(remoteList);
+      } else {
+        callback(getLocalCache<PlayerRecord>(LOCAL_PLAYERS_KEY));
+      }
+    }, (err) => {
+      console.warn('Real-time players snapshot listener error:', err);
+      callback(getLocalCache<PlayerRecord>(LOCAL_PLAYERS_KEY));
+    });
+  } catch (err) {
+    console.warn('Could not setup players snapshot listener:', err);
+    callback(getLocalCache<PlayerRecord>(LOCAL_PLAYERS_KEY));
+    return () => {};
+  }
+}
+
+/**
+ * Subscribe to real-time certificates updates from Firestore
+ */
+export function subscribeToCertificates(callback: (certs: CertificateRecord[]) => void): () => void {
+  if (!db) {
+    callback(getLocalCache<CertificateRecord>(LOCAL_CERTS_KEY));
+    return () => {};
+  }
+  try {
+    const q = query(collection(db, 'certificates'), orderBy('issuedAt', 'desc'), limit(200));
+    return onSnapshot(q, (snap) => {
+      const remoteList: CertificateRecord[] = [];
+      snap.forEach((d) => remoteList.push(d.data() as CertificateRecord));
+      if (remoteList.length > 0) {
+        setLocalCache(LOCAL_CERTS_KEY, remoteList);
+        callback(remoteList);
+      } else {
+        callback(getLocalCache<CertificateRecord>(LOCAL_CERTS_KEY));
+      }
+    }, (err) => {
+      console.warn('Real-time certs snapshot listener error:', err);
+      callback(getLocalCache<CertificateRecord>(LOCAL_CERTS_KEY));
+    });
+  } catch (err) {
+    console.warn('Could not setup certs snapshot listener:', err);
+    callback(getLocalCache<CertificateRecord>(LOCAL_CERTS_KEY));
+    return () => {};
+  }
+}
+
 

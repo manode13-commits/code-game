@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TournamentSession } from '../types';
 import { sound } from '../utils/audio';
+import { testFirebaseConnection, ConnectionStatus } from '../services/firebase';
 import {
   Settings,
   X,
@@ -13,8 +14,13 @@ import {
   Sparkles,
   Download,
   Users,
-  Eye
+  Eye,
+  Database,
+  RefreshCw,
+  CheckCircle,
+  AlertTriangle,
 } from 'lucide-react';
+
 
 interface TeacherHostPanelProps {
   isOpen: boolean;
@@ -44,6 +50,25 @@ export const TeacherHostPanel: React.FC<TeacherHostPanelProps> = ({
   onToggleSound,
 }) => {
   const [prizeInput, setPrizeInput] = useState(session.prizeNote);
+  const [dbStatus, setDbStatus] = useState<ConnectionStatus | null>(null);
+  const [testingDb, setTestingDb] = useState<boolean>(false);
+
+  const checkDb = async () => {
+    setTestingDb(true);
+    try {
+      const res = await testFirebaseConnection();
+      setDbStatus(res);
+    } finally {
+      setTestingDb(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      checkDb();
+    }
+  }, [isOpen]);
+
 
   const exportScoresCSV = () => {
     const sorted = [...session.players].sort((a, b) => b.score - a.score);
@@ -203,8 +228,46 @@ export const TeacherHostPanel: React.FC<TeacherHostPanelProps> = ({
             </div>
           </div>
 
+          {/* Firebase Cloud Database Status Card */}
+          <div className="p-3.5 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className={`p-1.5 rounded-lg ${dbStatus?.online ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                  <Database className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <span>ฐานข้อมูล Firebase Cloud Firestore</span>
+                    <span className={`w-2 h-2 rounded-full ${dbStatus?.online ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono truncate max-w-[260px]">
+                    {dbStatus?.databaseId || 'ai-studio-scienceweekcodeq-4297696f-7af9-4a9b-9e1a-27ab27311832'}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={checkDb}
+                disabled={testingDb}
+                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${testingDb ? 'animate-spin' : ''}`} />
+                <span>{testingDb ? 'Ping...' : 'ทดสอบ Ping'}</span>
+              </button>
+            </div>
+
+            <div className="text-[11px] text-slate-300 bg-slate-900/80 p-2 rounded-xl border border-slate-800/80 flex items-center justify-between">
+              <span>{dbStatus?.message || 'กำลังตรวจสอบการเชื่อมต่อ...'}</span>
+              {dbStatus?.latencyMs !== undefined && (
+                <span className="font-mono text-emerald-400 font-bold">{dbStatus.latencyMs} ms</span>
+              )}
+            </div>
+          </div>
+
           {/* Export and Reset actions */}
           <div className="pt-3 border-t border-slate-800 flex flex-col sm:flex-row gap-2">
+
             <button
               type="button"
               onClick={exportScoresCSV}

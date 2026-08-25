@@ -10,5 +10,16 @@ service cloud.firestore {
     match /certificates/{certId} {
       allow read, write: if true;
     }
+
+    // Health check and connection test collection
+    match /_connection_test/{docId} {
+      allow read, write: if true;
+    }
+
+    // General fallback for game collections
+    match /{document=**} {
+      allow read, write: if true;
+    }
   }
 }
+

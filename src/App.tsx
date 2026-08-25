@@ -226,13 +226,17 @@ export default function App() {
       }
 
       // Save/Update player info to Firebase Firestore with latest active time
-      savePlayerRecord({
-        name: trimmedName,
-        completedLevels: currentUnlocked,
-        totalScore: currentTotalScore,
-        maxCombo: currentHighestCombo,
-        deviceMode: mode,
-      });
+      try {
+        await savePlayerRecord({
+          name: trimmedName,
+          completedLevels: currentUnlocked,
+          totalScore: currentTotalScore,
+          maxCombo: currentHighestCombo,
+          deviceMode: mode,
+        });
+      } catch (saveErr) {
+        console.error('Error persisting player to Firebase:', saveErr);
+      }
     }
 
     setView('map');
