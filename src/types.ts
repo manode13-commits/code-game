@@ -77,6 +77,17 @@ export interface Level {
   difficulty: 'easy' | 'medium' | 'hard';
 }
 
+export interface LevelPattern {
+  titlePrefix: string;
+  thaiPrefix: string;
+  dirs: ('up' | 'down' | 'left' | 'right')[];
+  rows: number;
+  cols: number;
+  start: GridPosition;
+  codeGenByZone: (zoneConcept: 'loop' | 'condition' | 'function', id?: number) => string[];
+  explanationByZone: (zoneConcept: 'loop' | 'condition' | 'function') => string;
+}
+
 export interface TournamentPlayer {
   id: string;
   name: string;

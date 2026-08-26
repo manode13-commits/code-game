@@ -72,29 +72,143 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({
 
   const lineStyle = getLineStyles();
 
-  // Syntax highlight with matching color badges
-  const renderFormattedLine = (line: string, index: number) => {
-    let formattedHtml = line
-      .replace(/(repeat|\bif\b|\belse\b|\bwhile\b|\bfunction\b)/g, '<span class="text-[#dc2626] font-bold">$1</span>')
-      // 1. Orange 🟠
-      .replace(/🟠/g, '<span class="inline-flex items-center mx-0.5 align-middle"><span class="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-[#f59e0b] inline-block shadow-xs"></span></span>')
-      // 2. Pink / Red 🔴 🌸
-      .replace(/(🔴|🌸)/g, '<span class="inline-flex items-center mx-0.5 align-middle"><span class="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-[#e11d48] inline-block shadow-xs"></span></span>')
-      // 3. Green 🟢
-      .replace(/🟢/g, '<span class="inline-flex items-center mx-0.5 align-middle"><span class="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-[#4ade80] inline-block shadow-xs"></span></span>')
-      // 4. Cyan / Blue 🔵
-      .replace(/🔵/g, '<span class="inline-flex items-center mx-0.5 align-middle"><span class="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-[#06b6d4] inline-block shadow-xs"></span></span>')
-      // 5. Purple 🟣
-      .replace(/🟣/g, '<span class="inline-flex items-center mx-0.5 align-middle"><span class="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-[#a855f7] inline-block shadow-xs"></span></span>')
-      // 6. Yellow 🟡
-      .replace(/🟡/g, '<span class="inline-flex items-center mx-0.5 align-middle"><span class="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-[#eab308] inline-block shadow-xs"></span></span>')
-      // 7. Dark / Black ⚫
-      .replace(/⚫/g, '<span class="inline-flex items-center mx-0.5 align-middle"><span class="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-[#2b2b2b] inline-block shadow-xs"></span></span>')
-      // 8. Custom pattern ✖️
-      .replace(/✖️|❌/g, '<span class="inline-flex items-center mx-0.5 align-middle"><span class="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-[#1e293b] inline-flex items-center justify-center text-[8px] text-amber-400 font-bold shadow-xs">✕</span></span>')
-      .replace(/(up|down|left|right|toTheRight|square|choreography|shake|dance|choice|fromAbove|fromBelow|fall|eye|climbClaw|climbTower|flameHop|scanCircuit|spiralIn|reachPeaks|dragonFly)\s*\(\s*\)/g, '<span class="text-[#0284c7] font-bold">$1()</span>')
-      .replace(/\((\d+)\)/g, '(<span class="text-[#0369a1] font-bold">$1</span>)');
+  // Pure React Tokenizer & Syntax Highlighter (100% immune to HTML tag leakage)
+  const renderColorDot = (dot: string, key: number | string) => {
+    switch (dot) {
+      case '🟠':
+        return (
+          <span key={key} className="inline-flex items-center mx-1 align-middle">
+            <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-amber-500 shadow-xs ring-1 ring-amber-600/30 inline-block shrink-0" />
+          </span>
+        );
+      case '🔴':
+      case '🌸':
+        return (
+          <span key={key} className="inline-flex items-center mx-1 align-middle">
+            <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-rose-500 shadow-xs ring-1 ring-rose-600/30 inline-block shrink-0" />
+          </span>
+        );
+      case '🟢':
+        return (
+          <span key={key} className="inline-flex items-center mx-1 align-middle">
+            <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-emerald-500 shadow-xs ring-1 ring-emerald-600/30 inline-block shrink-0" />
+          </span>
+        );
+      case '🔵':
+        return (
+          <span key={key} className="inline-flex items-center mx-1 align-middle">
+            <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-sky-500 shadow-xs ring-1 ring-sky-600/30 inline-block shrink-0" />
+          </span>
+        );
+      case '🟣':
+        return (
+          <span key={key} className="inline-flex items-center mx-1 align-middle">
+            <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-purple-500 shadow-xs ring-1 ring-purple-600/30 inline-block shrink-0" />
+          </span>
+        );
+      case '🟡':
+        return (
+          <span key={key} className="inline-flex items-center mx-1 align-middle">
+            <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-amber-400 shadow-xs ring-1 ring-amber-500/30 inline-block shrink-0" />
+          </span>
+        );
+      case '⚫':
+        return (
+          <span key={key} className="inline-flex items-center mx-1 align-middle">
+            <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-slate-800 shadow-xs ring-1 ring-slate-950 inline-block shrink-0" />
+          </span>
+        );
+      case '✖️':
+      case '❌':
+        return (
+          <span key={key} className="inline-flex items-center justify-center mx-1 align-middle w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-slate-800 text-[9px] text-amber-400 font-bold shadow-xs">
+            ✕
+          </span>
+        );
+      default:
+        return <span key={key}>{dot}</span>;
+    }
+  };
 
+  const renderCodeTokens = (line: string): React.ReactNode[] => {
+    if (!line) return [<span key="empty">&nbsp;</span>];
+
+    const tokenRegex = /(\/\/.*$|🟠|🔴|🌸|🟢|🔵|🟣|🟡|⚫|✖️|❌|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b(?:repeat|for|while|if|else|function|let|const|return)\b|\b(?:up|down|left|right|climbStep|wavePulse|sweepCorner|jumpArch|walkSide|sensorStep|zigZagStep|sweepRow|masterChallenge|canMoveUp|canMoveRight|isWaveLow|hasCorner|hasArch|isEdgeBlocked|hasObstacle|hasUnvisitedRows|isRowEven|atGoal)\b|\b\d+\b|[{}();])/g;
+
+    const parts = line.split(tokenRegex);
+
+    return parts.map((part, i) => {
+      if (!part) return null;
+
+      // Comment
+      if (part.startsWith('//')) {
+        return (
+          <span key={i} className="text-emerald-600/85 italic font-sans">
+            {part}
+          </span>
+        );
+      }
+
+      // Color Dots
+      if (['🟠', '🔴', '🌸', '🟢', '🔵', '🟣', '🟡', '⚫', '✖️', '❌'].includes(part)) {
+        return renderColorDot(part, i);
+      }
+
+      // Keywords (repeat, if, else, for, while, function...)
+      if (/^(repeat|for|while|if|else|function|let|const|return)$/.test(part)) {
+        return (
+          <span key={i} className="text-[#c2410c] sm:text-[#b91c1c] font-bold">
+            {part}
+          </span>
+        );
+      }
+
+      // Function calls & identifiers
+      if (/^(up|down|left|right|climbStep|wavePulse|sweepCorner|jumpArch|walkSide|sensorStep|zigZagStep|sweepRow|masterChallenge|canMoveUp|canMoveRight|isWaveLow|hasCorner|hasArch|isEdgeBlocked|hasObstacle|hasUnvisitedRows|isRowEven|atGoal)$/.test(part)) {
+        return (
+          <span key={i} className="text-[#0369a1] font-bold">
+            {part}
+          </span>
+        );
+      }
+
+      // Numbers in arguments
+      if (/^\d+$/.test(part)) {
+        return (
+          <span key={i} className="text-[#0284c7] font-bold">
+            {part}
+          </span>
+        );
+      }
+
+      // Strings
+      if (/^(".*?"|'.*?')$/.test(part)) {
+        return (
+          <span key={i} className="text-[#15803d] font-medium">
+            {part}
+          </span>
+        );
+      }
+
+      // Braces / Parens
+      if (/^[{}();]$/.test(part)) {
+        return (
+          <span key={i} className="text-slate-700 font-bold">
+            {part}
+          </span>
+        );
+      }
+
+      // Regular text / whitespace
+      return (
+        <span key={i} className="text-slate-900">
+          {part}
+        </span>
+      );
+    });
+  };
+
+  const renderFormattedLine = (line: string, index: number) => {
     return (
       <div
         key={index}
@@ -105,11 +219,10 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({
           {index + 1}
         </span>
 
-        {/* Code Content */}
-        <span
-          dangerouslySetInnerHTML={{ __html: formattedHtml }}
-          className="tracking-wide whitespace-pre truncate"
-        />
+        {/* Code Content (Pure React Tokens) */}
+        <span className="tracking-wide whitespace-pre truncate">
+          {renderCodeTokens(line)}
+        </span>
       </div>
     );
   };

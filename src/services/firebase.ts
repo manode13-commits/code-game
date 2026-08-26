@@ -1,6 +1,16 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-import { getFirestore, Firestore, doc, setDoc, getDoc, collection } from 'firebase/firestore';
-import { getAuth, signInAnonymously, onAuthStateChanged, Auth } from 'firebase/auth';
+import { 
+  initializeFirestore, 
+  getFirestore, 
+  Firestore, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  collection,
+  enableNetwork,
+  disableNetwork
+} from 'firebase/firestore';
+import { getAuth, signInAnonymously, Auth } from 'firebase/auth';
 import firebaseAppletConfig from '../../firebase-applet-config.json';
 
 // Support both generated firebase-applet-config.json and environment variables
@@ -27,16 +37,25 @@ try {
     app = getApps()[0];
   }
 
-  // Initialize Firestore with specific databaseId if specified in config, otherwise default
+  // Initialize Firestore with long-polling auto-detection for reliable iframe/proxy connectivity
   const databaseId = firebaseAppletConfig.firestoreDatabaseId;
-  if (databaseId && databaseId !== '(default)') {
-    try {
+  const firestoreSettings = {
+    experimentalAutoDetectLongPolling: true,
+  };
+
+  try {
+    if (databaseId && databaseId !== '(default)') {
+      db = initializeFirestore(app, firestoreSettings, databaseId);
+    } else {
+      db = initializeFirestore(app, firestoreSettings);
+    }
+  } catch {
+    // If initializeFirestore was already called for this instance
+    if (databaseId && databaseId !== '(default)') {
       db = getFirestore(app, databaseId);
-    } catch {
+    } else {
       db = getFirestore(app);
     }
-  } else {
-    db = getFirestore(app);
   }
 
   // Initialize Firebase Auth & Anonymous Sign-in for seamless student session management
@@ -115,6 +134,17 @@ export async function testFirebaseConnection(): Promise<ConnectionStatus> {
   } catch (err: unknown) {
     const errMessage = err instanceof Error ? err.message : String(err);
     console.warn('Firebase Firestore test check:', errMessage);
+    
+    // Attempt auto-reconnect if network was momentarily unreachable
+    if (db && (errMessage.includes('unavailable') || errMessage.includes('offline'))) {
+      try {
+        await disableNetwork(db).catch(() => {});
+        await enableNetwork(db).catch(() => {});
+      } catch {
+        // ignore reconnect error
+      }
+    }
+
     return {
       online: false,
       message: `ไม่สามารถเข้าถึง Firestore ได้: ${errMessage}`,
